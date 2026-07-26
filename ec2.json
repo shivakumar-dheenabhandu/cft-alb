@@ -1,0 +1,236 @@
+{
+   "AWSTemplateFormatVersion":"2010-09-09",
+   "Resources":{
+      "myVPC":{
+         "Type":"AWS::EC2::VPC",
+         "Properties":{
+            "CidrBlock":"10.0.0.0/16"
+         }
+      },
+      "myInternetGateway":{
+         "Type":"AWS::EC2::InternetGateway"
+      },
+      "AttachGateway":{
+         "Type":"AWS::EC2::VPCGatewayAttachment",
+         "Properties":{
+            "VpcId":{
+               "Ref":"myVPC"
+            },
+            "InternetGatewayId":{
+               "Ref":"myInternetGateway"
+            }
+         }
+      },
+      "mySubnet1":{
+         "Type":"AWS::EC2::Subnet",
+         "Properties":{
+            "VpcId":{
+               "Ref":"myVPC"
+            },
+            "CidrBlock":"10.0.0.0/17",
+            "AvailabilityZone":"ap-south-1a",
+            "MapPublicIpOnLaunch": true
+         }
+      },
+      "mySubnet2":{
+         "Type":"AWS::EC2::Subnet",
+         "Properties":{
+            "VpcId":{
+               "Ref":"myVPC"
+            },
+            "CidrBlock":"10.0.128.0/17",
+            "AvailabilityZone":"ap-south-1b",
+            "MapPublicIpOnLaunch": true
+         }
+      },
+      "myRouteTable1":{
+         "Type":"AWS::EC2::RouteTable",
+         "Properties":{
+            "VpcId":{
+               "Ref":"myVPC"
+            }
+         }
+      },
+      "myRouteTable2":{
+         "Type":"AWS::EC2::RouteTable",
+         "Properties":{
+            "VpcId":{
+               "Ref":"myVPC"
+            }
+         }
+      },
+      "mySubnetRouteTableAssociation1":{
+         "Type":"AWS::EC2::SubnetRouteTableAssociation",
+         "Properties":{
+            "SubnetId":{
+               "Ref":"mySubnet1"
+            },
+            "RouteTableId":{
+               "Ref":"myRouteTable1"
+            }
+         }
+      },
+      "mySubnetRouteTableAssociation2":{
+         "Type":"AWS::EC2::SubnetRouteTableAssociation",
+         "Properties":{
+            "SubnetId":{
+               "Ref":"mySubnet2"
+            },
+            "RouteTableId":{
+               "Ref":"myRouteTable2"
+            }
+         }
+      },
+      "myRoute1":{
+         "Type":"AWS::EC2::Route",
+         "DependsOn":"AttachGateway",
+         "Properties":{
+            "RouteTableId":{
+               "Ref":"myRouteTable1"
+            },
+            "DestinationCidrBlock":"0.0.0.0/0",
+            "GatewayId":{
+               "Ref":"myInternetGateway"
+            }
+         }
+      },
+      "myRoute2":{
+         "Type":"AWS::EC2::Route",
+         "DependsOn":"AttachGateway",
+         "Properties":{
+            "RouteTableId":{
+               "Ref":"myRouteTable2"
+            },
+            "DestinationCidrBlock":"0.0.0.0/0",
+            "GatewayId":{
+               "Ref":"myInternetGateway"
+            }
+         }
+      },
+      "UbuntuInstance1": {
+         "Type": "AWS::EC2::Instance",
+         "Properties": {
+         "ImageId": "ami-01a00762f46d584a1",
+         "InstanceType": "t3.micro",
+         "SubnetId": {
+            "Ref": "mySubnet1"
+         },
+         "SecurityGroupIds": ["sg-0c72e9415456860d4"],
+         "KeyName": "ubuntu"
+         }
+      },
+      "UbuntuInstance2": {
+         "Type": "AWS::EC2::Instance",
+         "Properties": {
+         "ImageId": "ami-01a00762f46d584a1",
+         "InstanceType": "t3.micro",
+         "SubnetId": {
+            "Ref": "mySubnet2"
+         },
+         "SecurityGroupIds": ["sg-0c72e9415456860d4"],
+         "KeyName": "ubuntu"
+         }
+      },
+      "myLoadBalancer": {
+         "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+         "Properties": {
+               "Name": "my-alb",
+               "Type": "application",
+               "Scheme": "internet-facing",
+            
+               "Subnets": [
+                  {
+                     "Ref": "mySubnet1"
+                  },
+                  {
+                     "Ref": "mySubnet2"
+                  }
+               ],
+               "SecurityGroups": [
+                {
+                    "Ref": "ALBSecurityGroup"
+                }
+               ],
+               "LoadBalancerAttributes": [
+                  {
+                     "Key": "deletion_protection.enabled",
+                     "Value": true
+                  }
+               ]
+         }
+      },
+      "ALBSecurityGroup": {
+         "Type": "AWS::EC2::SecurityGroup",
+         "Properties": {
+            "GroupDescription": "Allow HTTP",
+            "VpcId": {
+            "Ref": "myVPC"
+         },
+         "SecurityGroupIngress": [
+            {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "CidrIp": "0.0.0.0/0"
+            }
+         ],
+         "SecurityGroupEgress": [
+            {
+            "IpProtocol": "-1",
+            "CidrIp": "0.0.0.0/0"
+            }
+         ]
+         }
+      },
+      "myTargetGroup": {
+         "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+         "Properties": {
+            "Name": "my-target-group",
+            "Protocol": "HTTP",
+            "Port": 80,
+            "TargetType": "instance",
+            "VpcId": {
+               "Ref": "myVPC"
+            },
+            "Targets": [
+            {
+               "Id": {
+               "Ref": "UbuntuInstance1"
+               },
+            "Port": 80
+            },
+            {
+               "Id": {
+               "Ref": "UbuntuInstance2"
+               },
+            "Port": 80
+            }
+            ]
+         }
+      },
+      "myListener": {
+         "Type": "AWS::ElasticLoadBalancingV2::Listener",
+         "Properties": {
+            "LoadBalancerArn": {
+            "Ref": "myLoadBalancer"
+            },
+            "Port": 80,
+            "Protocol": "HTTP",
+            "DefaultActions": [
+               {
+               "Type": "forward",
+               "TargetGroupArn": {
+               "Ref": "myTargetGroup"
+               }
+               }
+            ]
+         }
+      }
+   } 
+}
+
+
+
+      
+
+
